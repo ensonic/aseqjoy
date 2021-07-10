@@ -47,11 +47,17 @@
 
 int joystick_no=0;
 
-struct {
+typedef struct _ctrl {
 	int last_val_i;
-	double scale;
+	// input values from joystick
+	long i_min,i_max;
+	double i_rng;
+	// output values to midi
+	long o_min;
+	double o_rng;
 	snd_seq_event_t ev;
-} ctrls[MAX_JS_AXIS];
+} ctrl_t;
+ctrl_t ctrls[MAX_JS_AXIS];
 
 snd_seq_t *seq_handle;
 int verbose=0;
@@ -118,8 +124,6 @@ static void loop(int joy_fd)
 	struct js_event js;
 	snd_seq_event_t *ev;
 	int current_channel=1;
-	double val_d;
-	int val_i;
 		
 	puts("Ready, entering loop - use Ctrl-C to exit.");	
 
@@ -141,14 +145,18 @@ static void loop(int joy_fd)
 			break;
 			
 			case JS_EVENT_AXIS:
-			    if (js.number < MAX_JS_AXIS) {			    
-				    val_d=(double) js.value;
-				    val_d+=SHRT_MAX;
-				    val_d=ctrls[js.number].scale * val_d/((double) USHRT_MAX);
+			    if (js.number < MAX_JS_AXIS) {		
+			        ctrl_t *ctrl=&ctrls[js.number];
+                    double val_d;
+                    int val_i;
+
+				    // js.value signed 16 bit int
+				    val_d=((double) js.value - ctrl->i_min) / ctrl->i_rng;
+				    val_d=(ctrl->o_rng * val_d) + ctrl->o_min;
 				    val_i=(int) val_d;
 			    
-				    if (ctrls[js.number].last_val_i!=val_i) {
-                        ev=&ctrls[js.number].ev;
+				    if (ctrl->last_val_i!=val_i) {
+                        ev=&ctrl->ev;
 					    ev->data.control.channel=current_channel;
 					    ev->data.control.value=val_i;
 					    
@@ -156,6 +164,7 @@ static void loop(int joy_fd)
 					    snd_seq_event_output_direct(seq_handle, ev);
 					    
 					    if (verbose) {
+					        // TODO: replace 'controller %i' with actual name
 						    printf("Sent controller %i with value: %i.\n", ev->data.control.param, val_i);
 					    }
 				    }
@@ -167,8 +176,48 @@ static void loop(int joy_fd)
 
 static int parse_axis_spec(int axis, char* optarg)
 {
-    snd_seq_event_t *ev = &ctrls[axis].ev;
-    ev->data.control.param=atoi(optarg);
+    ctrl_t *ctrl=&ctrls[axis];
+    snd_seq_event_t *ev = &ctrl->ev;
+    char *delim = strchr(optarg, ':');
+    
+    if (!delim) {
+        // legacy format: <cc-number>
+        ev->data.control.param=atoi(optarg);
+    } else {
+        /* new format: <min>:<max>:<ev>
+         * - min:max is used to calibrate the joy-stick and to flip direction
+         *   defaults are: -32768:32767
+         * - ev: can be a letter or a cc number
+         */
+         char *mi=optarg, *ma, *evt;
+         *delim='\0';delim++;
+         ma=delim;
+         delim = strchr(delim, ':');
+         if (!delim) {
+             fprintf(stderr, "Missing 2nd delimiter. Needs to be <cc> or <min>:<max>:<ev>\n");
+             exit(-1);
+         }
+         *delim='\0';delim++;
+         evt=delim;
+         if (!*mi || !*ma || !*evt) {
+             fprintf(stderr, "One of the fields is empty. Needs to be <min>:<max>:<ev>\n");
+             exit(-1);
+         }
+       
+         ctrl->i_min=atoi(mi);
+         ctrl->i_max=atoi(ma);
+         switch(evt[0]) {
+           case 'p':
+               ev->type = SND_SEQ_EVENT_PITCHBEND;
+               ev->data.control.param=0;
+               ctrl->o_min = -8192;
+               ctrl->o_rng = 16383.0;
+               break;
+           default:
+               ev->data.control.param=atoi(evt);
+               break;
+         }
+    } 
 }
 
 int main (int argc, char **argv)
@@ -182,12 +231,17 @@ int main (int argc, char **argv)
     fprintf(stderr, "%s comes with ABSOLUTELY NO WARRANTY - for details read the license.\n", TOOL_NAME);
 
 	for (i=0; i<MAX_JS_AXIS; i++) {
-		ctrls[i].last_val_i=INT_MAX;
+		ctrls[i].last_val_i = INT_MAX;
+		ctrls[i].i_min = SHRT_MIN;
+		ctrls[i].i_max = SHRT_MAX;
+	    ctrls[i].o_min = 0;
+	    ctrls[i].o_rng = 127.0;
 		ev = &ctrls[i].ev;
 		snd_seq_ev_clear(ev);
     	snd_seq_ev_set_subs(ev);
     	snd_seq_ev_set_direct(ev);
     	snd_seq_ev_set_fixed(ev);
+    	ev->type = SND_SEQ_EVENT_CONTROLLER;
     	ev->data.control.param=10+i;
 	}
 	
@@ -198,7 +252,7 @@ int main (int argc, char **argv)
 		switch (i) {
 			case '?':
 			case 'h':
-				printf("usase: %s [-d joystick_no] [-v] [-0 ctrl0] [-1 ctrl1] [-2 ctrl2] [-3 ctrl3]\n\n", TOOL_NAME);
+				printf("usage: %s [-d joystick_no] [-v] [-0 ctrl0] [-1 ctrl1] [-2 ctrl2] [-3 ctrl3]\n\n", TOOL_NAME);
 				puts("\t-d select the joystick to use: 0..3");
 				puts("\t-0 select the controller for axis 0 (1-127)");
 				puts("\t-1 select the controller for axis 1 (1-127) etc");
@@ -233,14 +287,11 @@ int main (int argc, char **argv)
 	
 	for (i=0; i<MAX_JS_AXIS; i++) {
     	ev = &ctrls[i].ev;
-	    if (cc14) {
+	    if (cc14 && (ev->type == SND_SEQ_EVENT_CONTROLLER)) {
 		    ev->type = SND_SEQ_EVENT_CONTROL14;
-		    ctrls[i].scale=16383.0;
-	    } else {					
-		    ev->type = SND_SEQ_EVENT_CONTROLLER;
-		    ctrls[i].scale=127.0;
+		    ctrls[i].o_rng = 16383.0;
 	    }
-
+	    ctrls[i].i_rng = (double) (ctrls[i].i_max - ctrls[i].i_min);
 	}
 	
 	loop(joy_fd);
