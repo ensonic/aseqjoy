@@ -39,28 +39,29 @@
 
 #define TOOL_NAME "aseqjoy"
 
+#define MAX_JS_AXIS 4
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
 
 int joystick_no=0;
 
-typedef struct {
-	int controller;
-	int last_value;
-}  val;
+struct {
+	int last_val_i;
+	double scale;
+	snd_seq_event_t ev;
+} ctrls[MAX_JS_AXIS];
 
 snd_seq_t *seq_handle;
-snd_seq_event_t ev;
-int controllers[4];
 int verbose=0;
-int cc14=0;
 
-int open_alsa_seq()
+static int open_alsa_seq()
 {
 	char client_name[32];
 	char port_name[48];
 	snd_seq_addr_t src;
+	int i;
 	
 	/* Create the sequencer port. */
 	
@@ -78,21 +79,16 @@ int open_alsa_seq()
 		SND_SEQ_PORT_CAP_READ | SND_SEQ_PORT_CAP_SUBS_READ, SND_SEQ_PORT_TYPE_APPLICATION);
 
 	/* Init the event structure */
-	
-	snd_seq_ev_clear(&ev);
-	snd_seq_ev_set_source(&ev, src.port);
-	snd_seq_ev_set_subs(&ev);
-	snd_seq_ev_set_direct(&ev);
-
+	for (i=0; i<MAX_JS_AXIS; i++) {
+	    snd_seq_ev_set_source(&ctrls[i].ev, src.port);
+    }
 	return 0;
 }
 
-int axes;
-int joy_fd;
-int buttons;
-
-int open_joystick()
+static int open_joystick()
 {
+    int joy_fd;
+    int axes, buttons;
 	char device[256];
 	char name[NAME_LENGTH] = "Unknown";	
 	
@@ -114,32 +110,17 @@ int open_joystick()
 
 	printf("Using joystick (%s) through device %s with %i axes and %i buttons.\n", name, device, axes, buttons);
 
-	return 0;
+	return joy_fd;
 }
 
-void loop()
+static void loop(int joy_fd)
 {
 	struct js_event js;
+	snd_seq_event_t *ev;
 	int current_channel=1;
 	double val_d;
 	int val_i;
-	int i;
-	val *values;
-	
-	values = calloc(axes, sizeof(val));
-	
-	puts("Axis -> MIDI controller mapping:");
-	
-	for (i=0; i<axes; i++) {
-		if (i<4) {
-			values[i].controller=controllers[i];
-		} else {
-			values[i].controller=10+i;
-		}
-		printf("  %2i -> %3i\n", i, values[i].controller);
-		values[i].last_value=0;		
-	}
-	
+		
 	puts("Ready, entering loop - use Ctrl-C to exit.");	
 
 	while (1) {
@@ -160,51 +141,54 @@ void loop()
 			break;
 			
 			case JS_EVENT_AXIS:
-				val_d=(double) js.value;
-				val_d+=SHRT_MAX;
-				val_d=val_d/((double) USHRT_MAX);
-				
-				if (cc14) {
-					val_d*=16383.0;
-				} else {
-					val_d*=127.0;
-				}
-			
-				val_i=(int) val_d;
-			
-				if (values[js.number].last_value!=val_i) {
-					if (cc14) {
-						ev.type = SND_SEQ_EVENT_CONTROL14;
-					} else {					
-						ev.type = SND_SEQ_EVENT_CONTROLLER;
-					}
-
-					snd_seq_ev_set_fixed(&ev);
-					ev.data.control.channel=current_channel;
-					ev.data.control.param=values[js.number].controller;
-					ev.data.control.value=val_i;
-
-					
-					// snd_seq_ev_set_controller(&ev, current_channel, values[js.number].controller, val_i);
-					snd_seq_event_output_direct(seq_handle, &ev);
-					
-					if (verbose) {
-						printf("Sent controller %i with value: %i.\n", values[js.number].controller, val_i);
-					}
+			    if (js.number < MAX_JS_AXIS) {			    
+				    val_d=(double) js.value;
+				    val_d+=SHRT_MAX;
+				    val_d=ctrls[js.number].scale * val_d/((double) USHRT_MAX);
+				    val_i=(int) val_d;
+			    
+				    if (ctrls[js.number].last_val_i!=val_i) {
+                        ev=&ctrls[js.number].ev;
+					    ev->data.control.channel=current_channel;
+					    ev->data.control.value=val_i;
+					    
+					    // snd_seq_ev_set_controller(&ev, current_channel, ctrls[js.number].controller, val_i);
+					    snd_seq_event_output_direct(seq_handle, ev);
+					    
+					    if (verbose) {
+						    printf("Sent controller %i with value: %i.\n", ev->data.control.param, val_i);
+					    }
+				    }
 				}
 			break;
 		}
 	}
 }
 
+static int parse_axis_spec(int axis, char* optarg)
+{
+    snd_seq_event_t *ev = &ctrls[axis].ev;
+    ev->data.control.param=atoi(optarg);
+}
+
 int main (int argc, char **argv)
 {
+	snd_seq_event_t *ev;
 	int i;
-        fprintf(stderr, "%s version %s - Copyright (C) 2003-2016 by Alexander Koenig\n",  TOOL_NAME, VERSION);
-        fprintf(stderr, "%s comes with ABSOLUTELY NO WARRANTY - for details read the license.\n", TOOL_NAME);
+    int cc14=0;
+	int joy_fd;
+	
+    fprintf(stderr, "%s version %s - Copyright (C) 2003-2016 by Alexander Koenig\n",  TOOL_NAME, VERSION);
+    fprintf(stderr, "%s comes with ABSOLUTELY NO WARRANTY - for details read the license.\n", TOOL_NAME);
 
-	for (i=0; i<4; i++) {
-		controllers[i]=10+i;
+	for (i=0; i<MAX_JS_AXIS; i++) {
+		ctrls[i].last_val_i=INT_MAX;
+		ev = &ctrls[i].ev;
+		snd_seq_ev_clear(ev);
+    	snd_seq_ev_set_subs(ev);
+    	snd_seq_ev_set_direct(ev);
+    	snd_seq_ev_set_fixed(ev);
+    	ev->data.control.param=10+i;
 	}
 	
 	while (1) {
@@ -224,19 +208,10 @@ int main (int argc, char **argv)
 			break;
 			
 			case '0':
-				controllers[0]=atoi(optarg);
-			break;
-
 			case '1':
-				controllers[1]=atoi(optarg);
-			break;
-
 			case '2':
-				controllers[2]=atoi(optarg);
-			break;
-
 			case '3':
-				controllers[3]=atoi(optarg);
+			    parse_axis_spec(i - '0', optarg);
 			break;
 			
 			case 'v':
@@ -253,10 +228,22 @@ int main (int argc, char **argv)
 		}
 	}
 
-	open_joystick();
+	joy_fd = open_joystick();
 	open_alsa_seq();
 	
-	loop();
+	for (i=0; i<MAX_JS_AXIS; i++) {
+    	ev = &ctrls[i].ev;
+	    if (cc14) {
+		    ev->type = SND_SEQ_EVENT_CONTROL14;
+		    ctrls[i].scale=16383.0;
+	    } else {					
+		    ev->type = SND_SEQ_EVENT_CONTROLLER;
+		    ctrls[i].scale=127.0;
+	    }
+
+	}
+	
+	loop(joy_fd);
 
 	return 0;
 }
