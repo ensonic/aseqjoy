@@ -39,7 +39,7 @@
 
 #define TOOL_NAME "aseqjoy"
 
-#define MAX_JS_AXIS 4
+#define MAX_JS_AXIS 10
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -246,13 +246,13 @@ int main (int argc, char **argv)
 	}
 	
 	while (1) {
-		int i=getopt(argc, argv, "vhrd:0:1:2:3:");
+		int i=getopt(argc, argv, "vhrd:0:1:2:3:4:5:6:7:");
 		if (i==-1) break;
 		
 		switch (i) {
 			case '?':
 			case 'h':
-				printf("usage: %s [-d joystick_no] [-v] [-0 ctrl0] [-1 ctrl1] [-2 ctrl2] [-3 ctrl3]\n\n", TOOL_NAME);
+				printf("usage: %s [-d joystick_no] [-v] [-0 ctrl0] [-1 ctrl1] ... [-9 ctrl9]\n\n", TOOL_NAME);
 				puts("\t-d select the joystick to use: 0..3");
 				puts("\t-0 select the controller for axis 0 (1-127)");
 				puts("\t-1 select the controller for axis 1 (1-127) etc");
@@ -265,6 +265,12 @@ int main (int argc, char **argv)
 			case '1':
 			case '2':
 			case '3':
+			case '4':
+			case '5':
+			case '6':
+			case '7':
+			case '8':
+			case '9':
 			    parse_axis_spec(i - '0', optarg);
 			break;
 			
