@@ -2,6 +2,7 @@ aseqjoy - a simple joystick to ALSA MIDI sequencer converter
 ============================================================
 
 Copyright 2003-2016 by Alexander König - alex@lisas.de
+Copyright      2021 by Stefan Sauer - ensonic@users.sf.net
 
 License: GNU General Public License Version 2 or (at your option) any later 
 version - for details please refer to the file [COPYING](./COPYING) included 

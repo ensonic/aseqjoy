@@ -227,7 +227,9 @@ int main (int argc, char **argv)
     int cc14=0;
 	int joy_fd;
 	
-    fprintf(stderr, "%s version %s - Copyright (C) 2003-2016 by Alexander Koenig\n",  TOOL_NAME, VERSION);
+    fprintf(stderr, 
+      "%s version %s - Copyright (C) 2003-2016 by Alexander Koenig\n"
+      "                Copyright          2021 by Stefan Sauer\n", TOOL_NAME, VERSION);
     fprintf(stderr, "%s comes with ABSOLUTELY NO WARRANTY - for details read the license.\n", TOOL_NAME);
 
 	for (i=0; i<MAX_JS_AXIS; i++) {
