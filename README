@@ -68,9 +68,11 @@ comamndline parameters. These come in two flavours. The simple form like
 "-0 <cc>" will bind the first joystick axis to controller <cc>. The more
 complicated form "-0 <min>:<max>:<ev>" lets you specify a min/max value for
 the axis and a target event. The min/max is useful to manualy compensate for
-the range of the joystick. Defaults are -32768:32767. You can also flip min/max
-to invert the axis. Finally <ev> can be a cc number like in the simple form,
-but also 'p' to send pitch bend values instead.
+the range of the joystick. Defaults are -32767:32767 and the actual range the
+joystick delivers is shown in verbose mode (-v). You can also flip min/max to
+invert the axis. 
+Finally <ev> can be a cc number like in the simple form, but also 'p' to send
+pitch bend values instead.
 
 Have Fun,
 Alex

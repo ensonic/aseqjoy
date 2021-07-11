@@ -56,6 +56,8 @@ typedef struct _ctrl {
 	long o_min;
 	double o_rng;
 	snd_seq_event_t ev;
+	// input values (only track in verbose mode)
+	int v_min, v_max;
 } ctrl_t;
 ctrl_t ctrls[MAX_JS_AXIS];
 
@@ -164,8 +166,14 @@ static void loop(int joy_fd)
 					    snd_seq_event_output_direct(seq_handle, ev);
 					    
 					    if (verbose) {
+					        if (js.value < ctrl->v_min) {
+					          ctrl->v_min = js.value;
+					        } else if (js.value > ctrl->v_max) {
+					          ctrl->v_max = js.value;
+					        }
 					        // TODO: replace 'controller %i' with actual name
-						    printf("Sent controller %i with value: %i.\n", ev->data.control.param, val_i);
+						    printf("Sent controller %i with value: %5i (range: %5i..%5i).\n", 
+						      ev->data.control.param, val_i, ctrl->v_min , ctrl->v_max);
 					    }
 				    }
 				}
@@ -238,6 +246,8 @@ int main (int argc, char **argv)
 		ctrls[i].i_max = SHRT_MAX;
 	    ctrls[i].o_min = 0;
 	    ctrls[i].o_rng = 127.0;
+	    ctrls[i].v_min = SHRT_MAX;
+	    ctrls[i].v_max = SHRT_MIN + 1;
 		ev = &ctrls[i].ev;
 		snd_seq_ev_clear(ev);
     	snd_seq_ev_set_subs(ev);
