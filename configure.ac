@@ -1,8 +1,8 @@
 dnl Process this file with autoconf to produce a configure script.
-AC_INIT([aseqjoy], 0.0.2)
+AC_INIT([aseqjoy], 0.0.2-git)
 AC_CONFIG_SRCDIR([aseqjoy.c])
 AM_INIT_AUTOMAKE
-AM_CONFIG_HEADER(config.h)
+AC_CONFIG_HEADERS(config.h)
 
 dnl Checks for programs.
 AC_PROG_AWK
