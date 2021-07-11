@@ -41,6 +41,8 @@
 
 #define MAX_JS_AXIS 10
 
+#define CTRL_NAME_LENGTH 25
+
 #ifdef HAVE_CONFIG_H
 #include "config.h"
 #endif
@@ -56,8 +58,9 @@ typedef struct _ctrl {
     long o_min;
     double o_rng;
     snd_seq_event_t ev;
-    // input values (only track in verbose mode)
+    // input values (only tracked in verbose mode)
     int v_min, v_max;
+    char name[CTRL_NAME_LENGTH];
 } ctrl_t;
 ctrl_t ctrls[MAX_JS_AXIS];
 
@@ -171,9 +174,7 @@ static void loop(int joy_fd)
                             } else if (js.value > ctrl->v_max) {
                               ctrl->v_max = js.value;
                             }
-                            // TODO: replace 'controller %i' with actual name
-                            printf("Sent controller %i with value: %5i (range: %5i..%5i).\n", 
-                              ev->data.control.param, val_i, ctrl->v_min , ctrl->v_max);
+                            printf("Sent %s with value: %5i (range: %5i..%5i).\n", ctrl->name, val_i, ctrl->v_min , ctrl->v_max);
                         }
                     }
                 }
@@ -305,6 +306,15 @@ int main (int argc, char **argv)
     
     for (i=0; i<MAX_JS_AXIS; i++) {
         ev = &ctrls[i].ev;
+        switch (ev->type) {
+            case SND_SEQ_EVENT_CONTROLLER:
+              sprintf(ctrls[i].name, "controller %i", ev->data.control.param);
+              break;
+            case SND_SEQ_EVENT_PITCHBEND:
+              strcpy(ctrls[i].name, "pitch-bend");
+              break;
+        }
+        
         if (cc14 && (ev->type == SND_SEQ_EVENT_CONTROLLER)) {
             ev->type = SND_SEQ_EVENT_CONTROL14;
             ctrls[i].o_rng = 16383.0;
